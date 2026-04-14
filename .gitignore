@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Project specifics
+*.png
+*.jpg
+*.log
+debug*.png
+
+# IDEs
+.idea/
+.vscode/
+*.swp
