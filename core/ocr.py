@@ -27,7 +27,8 @@ def perform_ocr(image):
         # Đệm thêm 50px giấy trắng vào sẽ giúp tesseract luôn thấy trọn vẹn chữ ở căn giữa!
         image = ImageOps.expand(image, border=50, fill=255)
         
-        image.save("debug_ocr.png")
+        if os.environ.get("SCREEN_TRANSLATOR_DEBUG") == "1":
+            image.save("debug_ocr.png")
 
         # Psm mode 3 = Hoàn toàn tự động, thông minh hơn và ít ăn mất chữ nằm lẻ loi hơn mode 6.
         text = pytesseract.image_to_string(image, lang='eng', config='--psm 3')

@@ -44,25 +44,30 @@ def main():
     print("\n*** HƯỚNG DẪN SỬ DỤNG MỚI ***")
     print(" > Ứng dụng sẽ TỰ ĐỘNG theo dõi khung hình và nảy Vietsub mỗi khi có lời thoại mới.")
     print(" > Bấm phím [F9] nếu bạn muốn bắt ép ứng dụng dịch lại câu hiện tại.")
-    print(" > Giữ phím [Esc] để Thoát hoàn toàn ứng dụng.")
+    print(" > Bấm tổ hợp [Ctrl+Shift+Q] (hoặc Ctrl+C trong cửa sổ này) để Thoát hoàn toàn ứng dụng.")
     print("-" * 40)
     
+    state_lock = threading.Lock()
     is_translating = False
+    should_exit = False
     gui_queue = queue.Queue()
     last_text = ""
 
     def translate_worker():
         nonlocal is_translating, last_text
-        if is_translating:
-            return
-        is_translating = True
+        with state_lock:
+            if is_translating:
+                return
+            is_translating = True
         
         try:
             image = capture_region(region)
             text = perform_ocr(image)
             
+            with state_lock:
+                prev_text = last_text
             # Logic Tự Động: Chỉ dịch nếu "có chữ" và "chữ đó không trùng với câu nói mới nãy"
-            if text and text != last_text:
+            if text and text != prev_text:
                 print(f"[{time.strftime('%H:%M:%S')}] Phát hiện câu mới: {text}")
                 gui_queue.put("... Đang nảy dịch ...")
                 
@@ -72,41 +77,45 @@ def main():
                 gui_queue.put(vn_text)
                 
                 # Lưu vào vỏ não để lát so sánh, tránh bị chạy vòng lặp dịch hoài 1 câu gây tốn mạng
-                last_text = text
+                with state_lock:
+                    last_text = text
         except Exception as e:
             print(f"[!] Lỗi không xác định khi dịch tự động: {e}")
         finally:
-            is_translating = False
+            with state_lock:
+                is_translating = False
 
     def auto_scan_loop():
         # Vòng lặp vĩnh cửu: Quét màn hình để tìm chữ mỗi 1.5 giây
-        while True:
+        while not should_exit:
             translate_worker()
             time.sleep(1.5)
 
     def on_translate_manual():
         # Chế độ ép chạy (Manual F9): Xoá rỗng vỏ não đi để chữ trùng vẫn dịch lại được
         nonlocal last_text
-        last_text = "" 
+        with state_lock:
+            last_text = ""
         threading.Thread(target=translate_worker, daemon=True).start()
 
+    def on_request_exit():
+        nonlocal should_exit
+        should_exit = True
+
     keyboard.add_hotkey('f9', on_translate_manual)
+    keyboard.add_hotkey('ctrl+shift+q', on_request_exit)
     
     # Chạy vòng lặp Auto vào một góc máy chủ riêng (Background Thread)
     auto_thread = threading.Thread(target=auto_scan_loop, daemon=True)
     auto_thread.start()
     
     try:
-        while True:
+        while not should_exit:
             try:
                 msg = gui_queue.get_nowait()
                 overlay.update_text(msg)
             except queue.Empty:
                 pass
-
-            if keyboard.is_pressed('esc'):
-                print("-> Nhận lệnh Thoát...")
-                break
             
             overlay.process_events()
             time.sleep(0.01)
